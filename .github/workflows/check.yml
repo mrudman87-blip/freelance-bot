@@ -1,0 +1,57 @@
+name: Поиск заказов
+
+on:
+  schedule:
+    - cron: "3-59/10 * * * *"   # каждые 10 минут (GitHub может запускать с опозданием на несколько минут)
+  workflow_dispatch:            # кнопка «Run workflow» для ручного запуска
+
+permissions:
+  contents: write               # чтобы сохранять settings.txt после команд /add, /del и т.п.
+
+concurrency:
+  group: freelance-bot
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Вспомнить, какие заказы уже видели
+        uses: actions/cache/restore@v4
+        with:
+          path: state
+          key: state-${{ github.run_id }}
+          restore-keys: state-
+
+      - name: Проверить сайты и прислать заказы
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          FIRST_SAMPLES: ${{ vars.FIRST_SAMPLES }}
+        run: python3 bot.py
+
+      - name: Запомнить увиденные заказы
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: state
+          key: state-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Сохранить настройки (если менялись из Telegram) и не дать GitHub усыпить бота
+        if: always()
+        run: |
+          git config user.name "freelance-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # GitHub отключает расписание, если в репозитории 60 дней не было коммитов
+          if [ $(( $(date +%s) - $(git log -1 --format=%ct) )) -gt $(( 45 * 24 * 3600 )) ]; then
+            date -u +%F > .keepalive
+            git add .keepalive
+          fi
+          git add settings.txt
+          if ! git diff --cached --quiet; then
+            git commit -m "Настройки из Telegram"
+            git push || { git pull --rebase && git push; } || git rebase --abort || true
+          fi
