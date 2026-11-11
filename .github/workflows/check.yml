@@ -20,7 +20,7 @@ jobs:
       - uses: actions/checkout@v5
 
       - name: Вспомнить, какие заказы уже видели
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: state
           key: state-${{ github.run_id }}
@@ -35,7 +35,7 @@ jobs:
 
       - name: Запомнить увиденные заказы
         if: always()
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         with:
           path: state
           key: state-${{ github.run_id }}-${{ github.run_attempt }}
